@@ -10,16 +10,19 @@ import urllib.request
 
 print("1. Kutuphaneler ve MediaPipe hazirlaniyor...")
 
+#MEDİAPİPE EL MODELİNİN İNDİRİLMESİ ---
 task_path = 'hand_landmarker.task'
 if not os.path.exists(task_path):
     url = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
     urllib.request.urlretrieve(url, task_path)
 
+# MediaPipe Tasks API ayarları
 BaseOptions = mp.tasks.BaseOptions
 HandLandmarker = mp.tasks.vision.HandLandmarker
 HandLandmarkerOptions = mp.tasks.vision.HandLandmarkerOptions
 VisionRunningMode = mp.tasks.vision.RunningMode
 
+# El tespiti için güven oranlarını (%50) ayarlıyoruz.
 options = HandLandmarkerOptions(
     base_options=BaseOptions(model_asset_path=task_path),
     running_mode=VisionRunningMode.IMAGE,
@@ -37,12 +40,12 @@ if not os.path.exists(video_klasoru):
     print(f"Lutfen egitim videolarini .mp4 formatinda '{video_klasoru}' klasorune koyun.")
     exit()
 
-# --- ARTIMLI ISLEME (INCREMENTAL PROCESSING) KONTROLU ---
-islenmis_etiketler = set()
+# --- ARTIMLI İŞLEME (KONTROL) BLOĞU ---
+# Bu blok, daha önce hangi kelimelerin işlendiğini kontrol eder.islenmis_etiketler = set()
 if os.path.exists(csv_dosya_adi):
     try:
         mevcut_df = pd.read_csv(csv_dosya_adi)
-        # Mevcut CSV'deki benzersiz kelimeleri (etiketleri) bir kume (set) icine al
+        # CSV'deki benzersiz etiketleri hafızaya alarak mükerrer işlemeyi engeller.
         islenmis_etiketler = set(mevcut_df['etiket'].unique())
         print(f"-> Mevcut veri seti bulundu! Toplam {len(islenmis_etiketler)} kelime zaten islenmis durumda.")
     except Exception as e:
@@ -50,23 +53,25 @@ if os.path.exists(csv_dosya_adi):
 
 print(f"\n2. '{video_klasoru}' icindeki YENI videolar kontrol ediliyor...")
 
+# Klasördeki videoları listele.
 videolar = [v for v in os.listdir(video_klasoru) if v.endswith(".mp4") or v.endswith(".avi")]
-
 if len(videolar) == 0:
     print("HATA: Klasorde hic video bulunamadi!")
     exit()
 
+# Türkçe karakterleri temizleme (Örn: 'İ' -> 'i', 'ğ' -> 'g')
 def turkce_karakter_temizle(metin):
     degisim_tablosu = str.maketrans("ğĞıİşŞöÖüÜçÇ", "gGiIsSoOuUcC")
     return metin.translate(degisim_tablosu).lower()
 
 yeni_veriler = []
 
+#VİDEO İŞLEME DÖNGÜSÜ ---
 for video_adi in videolar:
     ham_etiket = video_adi.split('.')[0]
     etiket = turkce_karakter_temizle(ham_etiket)
     
-    # Eger bu kelime CSV'de zaten varsa, hic yorulmadan es gec (Atla)
+    # Kelime zaten CSV'de varsa, bu videoyu işlemeden atla.
     if etiket in islenmis_etiketler:
         print(f" - Atlaniyor: '{video_adi}' (Zaten veri setinde mevcut)")
         continue
@@ -79,6 +84,7 @@ for video_adi in videolar:
         ret, frame = cap.read()
         if not ret: break 
         
+        # Her 2 karede 1 alarak veri setini gereksiz büyümeden korur.
         kare_sayaci += 1
         if kare_sayaci % 2 != 0: continue
             
@@ -93,7 +99,8 @@ for video_adi in videolar:
                 el_turu = detection_result.handedness[hand_idx][0].category_name
                 noktalar = np.array([[lm.x, lm.y, lm.z] for lm in hand_landmarks], dtype=np.float32).flatten()
                 
-                # NORMALIZASYON
+               # --- BİLEK MERKEZLİ NORMALİZASYON ---
+                # Tüm noktaları bileğin koordinatından çıkararak (0,0,0) noktasına sabitler.
                 bilek_x, bilek_y, bilek_z = noktalar[0], noktalar[1], noktalar[2]
                 noktalar[0::3] -= bilek_x 
                 noktalar[1::3] -= bilek_y 
@@ -103,7 +110,7 @@ for video_adi in videolar:
                     frame_koordinatlari[:63] = noktalar
                 else:
                     frame_koordinatlari[63:] = noktalar
-                    
+             # Etiket ve 126 koordinatı birleştirerek tek satır oluşturur.       
             satir_verisi = [etiket] + frame_koordinatlari.tolist()
             yeni_veriler.append(satir_verisi)
 
@@ -122,7 +129,7 @@ if len(yeni_veriler) > 0:
 
     df_yeni = pd.DataFrame(yeni_veriler, columns=sutunlar)
     
-    # Eger CSV zaten varsa altina ekle (mode='a'), yoksa yeni olustur
+    # Eger CSV zaten varsa altina ekle (mode='a'), yoksa yeni olustur mode='a' (append) ile mevcut dosyanın sonuna ekleme yapılır.
     if os.path.exists(csv_dosya_adi):
         df_yeni.to_csv(csv_dosya_adi, mode='a', header=False, index=False)
         print(f"\n--- HARIKA! {len(df_yeni)} YENI KARE MEVCUT VERI SETINE EKLENDI ---")
