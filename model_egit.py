@@ -1,14 +1,23 @@
 # Faz 15: Holistic (Bütüncül) LSTM Model Eğitimi
+from pathlib import Path
+
+# Faz 15: Holistic (Bütüncül) LSTM Model Eğitimi
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
+from sklearn.utils.class_weight import compute_class_weight
 from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import LSTM, Dense, Dropout, BatchNormalization
 from tensorflow.keras.callbacks import EarlyStopping
 
-print("1. Holistic Veri Seti Yükleniyor ('holistic_verisetim.csv')...")
-df = pd.read_csv("holistic_verisetim.csv")
+ROOT = Path(__file__).resolve().parent
+DATA_PATH = ROOT / "normalized_verisetim.csv"
+MODEL_PATH = ROOT / "tid_holistic_model.keras"
+LABELS_PATH = ROOT / "siniflar.npy"
+
+print("1. Holistic Veri Seti Yükleniyor ('normalized_verisetim.csv')...")
+df = pd.read_csv(DATA_PATH)
 
 # Etiketleri (Y) ve Koordinatları (X) ayır
 X = df.drop("etiket", axis=1).values
@@ -29,7 +38,13 @@ X_reshaped = X.reshape(-1, ZAMAN_ADIMI, OZELLIK_SAYISI)
 print(f"-> Yeni Veri Boyutu: {X_reshaped.shape} (Örnek, Zaman, Koordinat)")
 
 print("\n4. Eğitim ve Test Verileri Ayrılıyor...")
-X_train, X_test, y_train, y_test = train_test_split(X_reshaped, y_encoded, test_size=0.1, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(
+    X_reshaped,
+    y_encoded,
+    test_size=0.1,
+    random_state=42,
+    stratify=y_encoded,
+)
 
 print("\n5. Bütüncül LSTM Mimarisi Kuruluyor...")
 model = Sequential()
@@ -59,11 +74,12 @@ history = model.fit(
     epochs=120, 
     batch_size=32, 
     validation_data=(X_test, y_test),
-    callbacks=[early_stop]
+    callbacks=[early_stop],
+    class_weight=class_weight_dict,
 )
 
 print("\n7. Holistic Model Kaydediliyor...")
-model.save("tid_holistic_model.keras")
+model.save(MODEL_PATH)
 print("--- MÜTHİŞ! BÜTÜNCÜL MODEL BAŞARIYLA KAYDEDİLDİ: 'tid_holistic_model.keras' ---")
 
 test_loss, test_acc = model.evaluate(X_test, y_test, verbose=0)
