@@ -1,19 +1,29 @@
 # Türkçe İşaret Dili (TİD) Gerçek Zamanlı Çeviri Sistemi
 
-Bu proje, işitme engelli bireylerle iletişimi kolaylaştırmak amacıyla geliştirilmiş, gerçek zamanlı ve sürekli bir işaret dili tanıma (Continuous Sign Language Recognition) sistemidir. 
+Bu proje, MediaPipe tabanlı işaret tespiti ile LSTM zaman serisi sınıflandırmasını birleştiren gerçek zamanlı bir Türkçe İşaret Dili çeviri sistemidir. Canlı kamera akışı `kamera_text.py` üzerinden işlenir, model tahminleri `tf.function` ile hızlandırılır ve sonuçlar çoğunluk oyu ile stabilize edilir.
 
-Standart statik görüntü sınıflandırmasının ötesine geçerek, **LSTM (Long Short-Term Memory)** yapay sinir ağları ile zaman serisi analizi yapar ve hareketlerin akışını algılar. Model, ezberlemeyi (overfitting) önlemek amacıyla **Burun-Merkezli (Nose-Centric) Koordinat Normalizasyonu** ile eğitilmiş ve kamera geçişlerindeki kararsızlıkları gidermek için **Çoğunluk Oyu (Majority Voting)** stabilite filtresi ile donatılmıştır.
+## Son Mimari
 
-## ⚠️ Veri Seti ve Mimari Notu (Önemli)
+- Canlı tahmin yolu `SEQUENCE_LENGTH = 20` ile çalışır.
+- Tahminler `MIN_PREDICTION_FRAMES = 8` sonrası başlatılır.
+- Kararlılık için `TAHMIN_TAMPON_BOYUTU = 6` kullanılır.
+- Sol ve sağ el bilgisi ayrı hafızalarda tutulur; bir el kaybolduğunda diğer elin verisi korunur.
+- Eğitim betiği `normalized_verisetim.csv` dosyasını kullanır ve sınıf dengesizliği için `class_weight` uygular.
 
-Bu projenin yapay zekası, **372 farklı Türkçe İşaret Dili kelimesini** içeren devasa bir veri havuzu üzerinden eğitilmiştir. 
+## Veri Seti
 
-Eğitim sürecinde kullanılan ham videolar (`videolar/` klasörü) ve bu videolardan MediaPipe ile süzülerek çıkarılan Sliding Window koordinat matrisleri (`normalized_verisetim.csv`), toplamda **1.3 GB'ın üzerinde** bir boyuta ulaşmıştır. 
+Bu depoda ağır ham videolar ve büyük eğitim CSV'leri saklanmaz. Eğitim için kullanılan ana dosya `normalized_verisetim.csv` olup, veri toplama tarafında yeni üretim hattı `lstm_veri_topla.py` içindeki `lstm_verisetim_v4.csv` çıktısını oluşturur.
 
-GitHub'ın dosya boyutu sınırlandırmaları (100 MB limiti) ve optimum depo yönetimi (Clean Repository) prensipleri gereğince; **ham videolar ve devasa CSV veri setleri bu GitHub deposuna (.gitignore aracılığıyla) yüklenmemiştir.**
+## Çalıştırma
 
-Bu depoda sadece şunlar bulunmaktadır:
-1. Sistemin omurgasını oluşturan Python kaynak kodları (`kamera_text.py`, veri toplama ve eğitim algoritmaları).
-2. O devasa veri setinden %99.52 başarı oranıyla süzülüp eğitilmiş, kullanıma hazır Yapay Zeka Beyni (`tid_holistic_model.keras` modeli) ve etiket dosyası (`siniflar.npy`).
+Canlı sistemi başlatmak için:
 
-Projeyi bilgisayarınıza indirip `kamera_text.py` dosyasını çalıştırarak bu gelişmiş mimariyi anında test edebilirsiniz.
+```bash
+python kamera_text.py
+```
+
+Eğitim yapmak için:
+
+```bash
+python model_egit.py
+```

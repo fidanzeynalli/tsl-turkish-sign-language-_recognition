@@ -41,15 +41,11 @@ if not os.path.exists(video_klasoru):
     exit()
 
 # --- ARTIMLI İŞLEME (KONTROL) BLOĞU ---
-# Bu blok, daha önce hangi kelimelerin işlendiğini kontrol eder.islenmis_etiketler = set()
-if os.path.exists(csv_dosya_adi):
-    try:
-        mevcut_df = pd.read_csv(csv_dosya_adi)
-        # CSV'deki benzersiz etiketleri hafızaya alarak mükerrer işlemeyi engeller.
-        islenmis_etiketler = set(mevcut_df['etiket'].unique())
-        print(f"-> Mevcut veri seti bulundu! Toplam {len(islenmis_etiketler)} kelime zaten islenmis durumda.")
-    except Exception as e:
-        print("CSV okunurken bir hata olustu:", e)
+# Eğer txt dosyan varsa bunu kullan, yoksa boş bir set oluştur
+islenmis_videolar = set()
+if os.path.exists("normalized_islenenler.txt"):
+    with open("normalized_islenenler.txt", "r") as f:
+        islenmis_videolar = set([line.strip() for line in f])
 
 print(f"\n2. '{video_klasoru}' icindeki YENI videolar kontrol ediliyor...")
 
@@ -72,7 +68,7 @@ for video_adi in videolar:
     etiket = turkce_karakter_temizle(ham_etiket)
     
     # Kelime zaten CSV'de varsa, bu videoyu işlemeden atla.
-    if etiket in islenmis_etiketler:
+    if etiket in islenmis_videolar:
         print(f" - Atlaniyor: '{video_adi}' (Zaten veri setinde mevcut)")
         continue
     

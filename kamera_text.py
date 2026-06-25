@@ -7,6 +7,7 @@ from tensorflow.keras.models import load_model
 print("1. Model Yükleniyor...")
 model = load_model("tid_holistic_model.keras")
 siniflar = np.load('siniflar.npy', allow_pickle=True)
+id_sozlugu = {idx: sinif for idx, sinif in enumerate(siniflar)}
 
 BaseOptions = mp.tasks.BaseOptions
 VisionRunningMode = mp.tasks.vision.RunningMode
@@ -161,7 +162,7 @@ while cap.isOpened():
         guven = res[indeks]
         
         if guven > 0.80 and el_var_mi:
-            tahmin_tamponu.append(siniflar[indeks])
+            tahmin_tamponu.append(id_sozlugu.get(indeks, "BOS"))
         else:
             tahmin_tamponu.append("BOS")
             

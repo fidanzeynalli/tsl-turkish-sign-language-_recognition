@@ -3,14 +3,12 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
 from tensorflow.keras.models import load_model
 
 
 ROOT = Path(__file__).resolve().parents[1]
 MODEL_PATH = ROOT / "tid_holistic_model.keras"
-DATA_PATH = ROOT / "normalized_verisetim.csv"
+DATASET_CANDIDATES = [ROOT / "final_verisetim.csv", ROOT / "normalized_verisetim.csv"]
 LABELS_PATH = ROOT / "siniflar.npy"
 
 
@@ -22,8 +20,14 @@ def infer_sequence_length(feature_count: int) -> int:
 
 def main() -> None:
     print("Loading dataset and saved label order...")
-    df = pd.read_csv(DATA_PATH)
     saved_classes = np.load(LABELS_PATH, allow_pickle=True)
+
+    data_path = next((path for path in DATASET_CANDIDATES if path.exists()), None)
+    if data_path is None:
+        raise FileNotFoundError("No evaluation dataset found. Expected final_verisetim.csv or normalized_verisetim.csv.")
+
+    print(f"Using dataset: {data_path.name}")
+    df = pd.read_csv(data_path)
 
     X = df.drop("etiket", axis=1).values
     y = df["etiket"].astype(str).values
@@ -33,43 +37,53 @@ def main() -> None:
 
     X = X.reshape(-1, sequence_length, 258)
 
-    # Match the exact label order that was saved during training.
-    encoder = LabelEncoder()
-    encoder.classes_ = saved_classes.astype(str)
-    y_encoded = encoder.transform(y)
-
-    X_train, X_test, y_train, y_test = train_test_split(
-        X,
-        y_encoded,
-        test_size=0.1,
-        random_state=42,
-        stratify=y_encoded,
-    )
-
     print("Loading model...")
     model = load_model(MODEL_PATH)
 
     print("Evaluating...")
-    probabilities = model.predict(X_test, verbose=0)
-    y_pred = np.argmax(probabilities, axis=1)
+    probabilities = model.predict(X, verbose=0)
+    y_pred_indices = np.argmax(probabilities, axis=1)
+    predicted_labels = saved_classes.astype(str)[y_pred_indices]
 
-    acc = accuracy_score(y_test, y_pred)
-    print(f"Accuracy: {acc * 100:.2f}%")
+    allowed_labels = set(saved_classes.astype(str))
+    correct_predictions = 0
+    skipped_unseen = 0
 
-    print("\nClassification report (first 20 lines):")
-    report = classification_report(
-        y_test,
-        y_pred,
-        labels=np.arange(len(encoder.classes_)),
-        target_names=encoder.classes_,
-        zero_division=0,
-    )
-    for line in report.splitlines()[:20]:
-        print(line)
+    for true_label, predicted_label in zip(y, predicted_labels):
+        if true_label not in allowed_labels:
+            skipped_unseen += 1
+            continue
+        if true_label == predicted_label:
+            correct_predictions += 1
 
-    cm = confusion_matrix(y_test, y_pred)
-    print(f"\nConfusion matrix shape: {cm.shape}")
-    print(f"Test samples: {len(X_test)}")
+    total_samples = len(y)
+    overall_accuracy = correct_predictions / total_samples
+
+    print(f"Overall accuracy over all labels: {overall_accuracy * 100:.2f}%")
+    print(f"Correct predictions: {correct_predictions}")
+    print(f"Total samples: {total_samples}")
+    print(f"Unseen labels counted as incorrect: {skipped_unseen}")
+
+    seen_mask = np.array([label in allowed_labels for label in y])
+    seen_true = y[seen_mask]
+    seen_pred = predicted_labels[seen_mask]
+    if len(seen_true) > 0:
+        seen_acc = accuracy_score(seen_true, seen_pred)
+        print(f"Accuracy on labels known to the model: {seen_acc * 100:.2f}%")
+
+        print("\nClassification report (first 20 lines):")
+        report = classification_report(
+            seen_true,
+            seen_pred,
+            labels=saved_classes.astype(str),
+            target_names=saved_classes.astype(str),
+            zero_division=0,
+        )
+        for line in report.splitlines()[:20]:
+            print(line)
+
+        cm = confusion_matrix(seen_true, seen_pred, labels=saved_classes.astype(str))
+        print(f"\nConfusion matrix shape: {cm.shape}")
 
 
 if __name__ == "__main__":
